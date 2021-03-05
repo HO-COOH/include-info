@@ -2,7 +2,14 @@
 	"name": "include-info",
 	"displayName": "include-info",
 	"description": "Show infos about your included files",
-	"version": "1.0.0",
+	"version": "1.0.1",
+	"publisher": "HO-COOH",
+	"repository": 
+	{
+		"type": "git",
+		"url": "https://github.com/HO-COOH/include-info"
+	},
+	"icon": "logo.png",
 	"engines": {
 		"vscode": "^1.53.0"
 	},
@@ -10,7 +17,7 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onCommand:include-info.helloWorld",
+		"onCommand:include-info.showInfo",
 		"onLanguage:c",
 		"onLanguage:cpp"
 	],
@@ -19,8 +26,8 @@
 	{
 		"commands": [
 			{
-				"command": "include-info.helloWorld",
-				"title": "Hello World"
+				"command": "include-info.showInfo",
+				"title": "Show include info"
 			}
 		],
 		"configuration":

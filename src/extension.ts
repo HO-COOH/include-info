@@ -189,25 +189,29 @@ class IncludeSizeProvider implements vscode.CodeLensProvider
 
 	provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.ProviderResult<vscode.CodeLens[]>
 	{
-		let codeLenses: vscode.CodeLens[] = [];
-		let matches;
-
-		const text = document.getText();
-		/*find all include */
-		while ((matches = this.includeRegex.exec(text)) !== null)
+		if (vscode.workspace.getConfiguration("Include Info").get<boolean>("Auto Show Include Info", false))
 		{
-			const line = document.lineAt(document.positionAt(matches.index).line);
-			const indexOf = line.text.indexOf(matches[1]);
-			const position = new vscode.Position(line.lineNumber, indexOf + matches[1].length);
-			const range = new vscode.Range(position, new vscode.Position(line.lineNumber, line.text.length));
-			if (range)
+			let codeLenses: vscode.CodeLens[] = [];
+			let matches;
+
+			const text = document.getText();
+			/*find all include */
+			while ((matches = this.includeRegex.exec(text)) !== null)
 			{
-				codeLenses.push(new vscode.CodeLens(range));
+				const line = document.lineAt(document.positionAt(matches.index).line);
+				const indexOf = line.text.indexOf(matches[1]);
+				const position = new vscode.Position(line.lineNumber, indexOf + matches[1].length);
+				const range = new vscode.Range(position, new vscode.Position(line.lineNumber, line.text.length));
+				if (range)
+				{
+					codeLenses.push(new vscode.CodeLens(range));
+				}
 			}
+			/*debug */
+			//console.log(`Found ${codeLenses.length} include!`);
+			return codeLenses;
 		}
-		/*debug */
-		//console.log(`Found ${codeLenses.length} include!`);
-		return codeLenses;
+		return [];
 	}
 	resolveCodeLens(codeLens: vscode.CodeLens, token: vscode.CancellationToken)
 	{
@@ -226,22 +230,19 @@ class IncludeSizeProvider implements vscode.CodeLensProvider
 };
 
 
-function getSettings()
-{
-
-}
-
 export function activate(context: vscode.ExtensionContext) 
 {
 
+	/*debug*/
 	console.log('Congratulations, your extension "include-info" is now active!');
 
+	if (vscode.workspace.getConfiguration("Include Info").get<boolean>("Auto Show Include Info", false))
+		vscode.languages.registerCodeLensProvider("*", new IncludeSizeProvider);
 
-	vscode.languages.registerCodeLensProvider("*", new IncludeSizeProvider);
-
-	let disposable = vscode.commands.registerCommand('include-info.helloWorld', () => 
+	let disposable = vscode.commands.registerCommand('include-info.showInfo', () => 
 	{
-		vscode.window.showInformationMessage('include-info!');
+		/*debug*/
+		vscode.languages.registerCodeLensProvider("*", new IncludeSizeProvider);
 	});
 
 	vscode.commands.registerCommand("include-info.goToHeader", (uri: vscode.Uri) =>

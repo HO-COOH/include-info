@@ -1,3 +1,4 @@
+![](logo.png)
 # include-info
 Show info about your `<included>` files!
 
@@ -6,7 +7,7 @@ Show info about your `<included>` files!
 
 ![](https://raw.githubusercontent.com/HO-COOH/include-info/master/screenshots/1.png)
 
-1. Directly jump to that file when clicked on the info.
+2. Directly jump to that file when clicked on the info.
 
 ![](https://raw.githubusercontent.com/HO-COOH/include-info/master/screenshots/GoToHeader.gif)
 
