@@ -4,11 +4,11 @@ Show info about your `<included>` files!
 ## Features
 1. Show lines, file size and number of included files of your `#include <file>` directives. 
 
-![](screenshots/1.png)
+![](https://raw.githubusercontent.com/HO-COOH/include-info/master/screenshots/1.png)
 
-2. Directly jump to that file when clicked on the info.
+1. Directly jump to that file when clicked on the info.
 
-![](screenshots/GoToHeader.gif)
+![](https://raw.githubusercontent.com/HO-COOH/include-info/master/screenshots/GoToHeader.gif)
 
 
 ## Requirements
