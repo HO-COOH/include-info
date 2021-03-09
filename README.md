@@ -23,11 +23,11 @@ This extension contributes the following settings:
 - `Include Info.File Line Number Seperator`
 
 ## Known Issues
-- Does NOT recursively scan the included files in the included file, because of [this vscode api issue I raised](https://github.com/microsoft/vscode/issues/118133) and [this](https://github.com/microsoft/vscode/issues/118085). (Code is already there, will update as soon as it get resolved.)
+- Does NOT recursively scan the included files in the included file, because of [this vscode api issue I raised](https://github.com/microsoft/vscode-cpptools/issues/7124) and [this](https://github.com/microsoft/vscode/issues/118085). (Code is already there, will update as soon as it get resolved.)
 - Does NOT take conditional macros into account. Need significant effort to solve that, maybe using a real language server. (Contributions are greatly appreciated)
 
 ## Plan
-- Add something like a tooltip that lists all the included files when clicked and jump to that file.
+- ~~Add something like a tooltip that lists all the included files when clicked and jump to that file.~~ √
 - Help remove unnecessary include (might need a language server)
 
 ## Release Notes

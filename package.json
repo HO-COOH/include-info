@@ -24,12 +24,14 @@
 	"main": "./out/extension.js",
 	"contributes": 
 	{
-		"commands": [
+		"commands": 
+		[
 			{
 				"command": "include-info.showInfo",
 				"title": "Show include info"
 			}
 		],
+
 		"configuration":
 		[
 			{
