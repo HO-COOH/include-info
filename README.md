@@ -2,12 +2,16 @@
 # include-info
 Show info about your `<included>` files!
 
+## Download 
+
+[here](https://marketplace.visualstudio.com/items?itemName=HO-COOH.include-info).
+
 ## Features
 1. Show lines, file size and number of included files of your `#include <file>` directives. 
 
 ![](https://raw.githubusercontent.com/HO-COOH/include-info/master/screenshots/1.png)
 
-2. Directly jump to that file when clicked on the info.
+2. Directly jump to included files when clicked on the info.
 
 ![](https://raw.githubusercontent.com/HO-COOH/include-info/master/screenshots/GoToHeader.gif)
 
@@ -27,8 +31,13 @@ This extension contributes the following settings:
 - Does NOT take conditional macros into account. Need significant effort to solve that, maybe using a real language server. (Contributions are greatly appreciated)
 
 ## Plan
-- ~~Add something like a tooltip that lists all the included files when clicked and jump to that file.~~ √
+- ~~Add something like a tooltip that lists all the included files when clicked and jump to that file~~  √
 - Help remove unnecessary include (might need a language server)
 
 ## Release Notes
+- 1.1.1
+Clean up code, optimize performance
+- 1.1.0
+Add tooltip for listing included files
+- 1.0.0
 First release!

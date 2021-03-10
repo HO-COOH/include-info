@@ -37,8 +37,8 @@ function getCurrentEditor()
 function getFileUri(definition: (vscode.Location | vscode.LocationLink)[])
 {
     /*debug */
-    if (definition.length == 0)
-        console.log(`Error!`);
+    // if (definition.length == 0)
+    //     console.log(`Error!`);
     return (definition[0] as vscode.Location).uri;
 }
 
@@ -47,10 +47,30 @@ function getIncludePosition(document: vscode.TextDocument, matchIndex: number): 
     return document.positionAt(matchIndex);
 }
 
+const commentRegex = /(\/\*[\s\S]+?\*\/)|(\/\/.*)/g;
+const commentReplaceRegex = /[^\n]/g;
+
 function removeComment(document: vscode.TextDocument)
 {
-    const commentRegex = /(\/\*[\s\S]+?\*\/)|(\/\/.*)/g;
     return document.getText().replace(commentRegex, "");
+}
+
+function replaceCommentWithSpace(document: vscode.TextDocument)
+{
+    return document.getText().replace(commentRegex, (match) =>
+    {
+        return match.replace(commentReplaceRegex, " ");
+    });
+}
+
+function getPositionFromRegexMatch(document: vscode.TextDocument, match: RegExpExecArray, matchGroup: number):vscode.Position
+{
+    const line = document.lineAt(document.positionAt(match.index).line);
+    const indexOf = line.text.indexOf(match[matchGroup]);
+    let offset = 0;
+    for (let i = 0; i < matchGroup; ++i)
+        offset += match[i].length;
+    return new vscode.Position(line.lineNumber, indexOf + offset);
 }
 
 class FileInfo
@@ -98,14 +118,15 @@ class IncludeDirective
     position: vscode.Position;
     isStd: boolean = false;
     
-    static stdIncludedFileNameList: Map<string, string[]> = new Map();
+    static stdIncludedFileNameList: Map<string, Map<string, vscode.Position>> = new Map();  //cache std for faster look-up, <stdHeaderName> <-> (includedHeader <-> Position)
+    includedFileNameList: Map<string, vscode.Position> = new Map();     //don't cache non-std headers, <headerName> <-> Position
+    
     static includedFiles: UriMap = new UriMap();
     static config: Configuration = new Configuration();
 
-    includedFileNameList: string[] = [];
 
     /*disable recursion for now*/
-    static recursion = false;
+    //static recursion = false;
 
     constructor(position: vscode.Position)
     {
@@ -120,57 +141,42 @@ class IncludeDirective
     private async findAllInclude(file: vscode.Uri): Promise<FileInfo | undefined>
     {
         if (IncludeDirective.includedFiles.has(file))
-        {
             return IncludeDirective.includedFiles.get(file)!;
-        }
-
-        IncludeDirective.includedFiles.set(file, new FileInfo(0, 0));
 
         /*Use regex to find all the includes */
         const includeRegex = /#include\s*[<"]\s*(.*)\s*[>"]/g;
         return await vscode.workspace.openTextDocument(file).then(async content =>
         {
             let currentFileInfo = new FileInfo(0, 0);
-            const contentString = removeComment(content);
+            //const contentString = removeComment(content);
+            const contentString = replaceCommentWithSpace(content);
             const fileName = getFileNameFromUri(file);
             this.isStd = isStdHeader(fileName);
             let matches;
             //for each include
             while ((matches = includeRegex.exec(contentString)) !== null)
             {
-                if (IncludeDirective.recursion)
-                {
-                    const definitionResult = await commands.definitionProvider(content.uri, getIncludePosition(content, matches.index + matches[0].indexOf(matches[1])));
-                    const uri = getFileUri(definitionResult);
-                    const includedFileInfo = await this.findAllInclude(uri);
-                    if (includedFileInfo !== undefined)
-                    {
-                        currentFileInfo.bytes += includedFileInfo.bytes;
-                        currentFileInfo.lines += includedFileInfo.lines;
-                    }
-                }
                 ++currentFileInfo.includedFileNum;
                 /*push included file into the list */
                 if (this.isStd)
                 {
-                    const oldList = IncludeDirective.stdIncludedFileNameList.get(fileName);
+                    let oldList = IncludeDirective.stdIncludedFileNameList.get(fileName);
                     if (oldList === undefined)
-                        IncludeDirective.stdIncludedFileNameList.set(fileName, [matches[1]]);
-                    else
-                        IncludeDirective.stdIncludedFileNameList.set(fileName, oldList.concat(matches[1]));
+                    {
+                        IncludeDirective.stdIncludedFileNameList.set(fileName, new Map());
+                        oldList = IncludeDirective.stdIncludedFileNameList.get(fileName)!;
+                    }
+                    oldList.set(matches[1], getPositionFromRegexMatch(content, matches, 1));
                 }
                 else
-                {
-                    this.includedFileNameList.push(matches[1]);
-                }
+                    this.includedFileNameList.set(matches[1], getPositionFromRegexMatch(content, matches, 1));
             }
 
             currentFileInfo.bytes += contentString.length;
             currentFileInfo.lines += content.lineCount;
+            
             if (this.isStd)
                 IncludeDirective.includedFiles.set(file, currentFileInfo);
-            else
-                IncludeDirective.includedFiles.delete(file);
             return currentFileInfo;
         });
     }
@@ -207,7 +213,7 @@ class IncludeDirective
     async getIncludedFileList()
     {
         const uri = await this.getUri();
-        if(this.includedFileNameList.length === 0)
+        if(this.includedFileNameList.size === 0)
             return IncludeDirective.stdIncludedFileNameList.get(getFileNameFromUri(uri));
         else
             return this.includedFileNameList;
@@ -280,20 +286,14 @@ export function activate(context: vscode.ExtensionContext)
         vscode.languages.registerCodeLensProvider("*", new IncludeSizeProvider);
     });
 
-    // vscode.commands.registerCommand("include-info.goToHeader", (uri: vscode.Uri) =>
-    // {
-    // 	vscode.window.showTextDocument(uri, {
-    // 		preserveFocus: false
-    // 	});
-    // });
-
     vscode.commands.registerCommand("include-info.goToHeader", async (includeDirective: IncludeDirective) =>
     {
-        let quickPickList = (await includeDirective.getIncludedFileList());
-        if (!quickPickList)
-            quickPickList = [];
-        quickPickList = quickPickList.map(str => `<${str}>`);
-        vscode.window.showQuickPick(quickPickList.concat(["Go To Header"])).then(async selection =>
+        let includeMap = (await includeDirective.getIncludedFileList());
+        if (!includeMap)
+            includeMap = new Map();
+        let fileList = Array.from(includeMap.keys());
+        fileList = fileList.map(str => `<${str}>`);
+        vscode.window.showQuickPick(fileList.concat(["Go To Header"])).then(async selection =>
         {
             if (selection)
             {
@@ -306,16 +306,7 @@ export function activate(context: vscode.ExtensionContext)
                     {
                         vscode.window.showTextDocument(doc).then(async () =>
                         {
-                            //TODO: optimize this
-                            const content = doc.getText();
-                            const searchRegex = new RegExp(`(#include\\s*[<\"])${selection}[>\"]`);
-                            const match = searchRegex.exec(content);
-
-                            const line = doc.lineAt(doc.positionAt(match!.index).line);
-                            const indexOf = line.text.indexOf(match![1]);
-                            const position = new vscode.Position(line.lineNumber, indexOf + match![1].length);
-
-                            const matchedFileUri = getFileUri(await commands.definitionProvider(doc.uri, position));
+                            const matchedFileUri = getFileUri(await commands.definitionProvider(doc.uri, includeMap?.get(selection!)!));
                             vscode.window.showTextDocument(matchedFileUri);
                         })
                     })
