@@ -5,6 +5,8 @@
  * Note: Do NOT cache for non std headers because they can be changed
  */
 
+import { stringify } from "node:querystring";
+import * as vscode from 'vscode';
 const cppStdHeaders =
 [
     /*C++20 */
@@ -150,7 +152,16 @@ const cstdHeaders =
 
 const stdHeaders = new Set(cppStdHeaders.concat(cstdHeaders));
 
-export function isStdHeader(headerName: string): boolean
+export function isStdHeader(headerName: string | vscode.Uri): boolean
 {
-    return stdHeaders.has(headerName);
+    if(typeof headerName === "string")
+        return stdHeaders.has(headerName);
+    else
+    {
+        const path = headerName.path;
+        return ((path.includes("usr/include") || path.includes("usr/lib"))
+            || (path.includes("VC") && path.includes("MSVC") && path.includes("include") && path.includes("Tools"))
+            || (path.includes("mingw") && path.includes("include"))
+        );
+    }
 }

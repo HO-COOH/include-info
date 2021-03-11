@@ -67,10 +67,7 @@ function getPositionFromRegexMatch(document: vscode.TextDocument, match: RegExpE
 {
     const line = document.lineAt(document.positionAt(match.index).line);
     const indexOf = line.text.indexOf(match[matchGroup]);
-    let offset = 0;
-    for (let i = 0; i < matchGroup; ++i)
-        offset += match[i].length;
-    return new vscode.Position(line.lineNumber, indexOf + offset);
+    return new vscode.Position(line.lineNumber, indexOf);
 }
 
 class FileInfo
@@ -151,7 +148,7 @@ class IncludeDirective
             //const contentString = removeComment(content);
             const contentString = replaceCommentWithSpace(content);
             const fileName = getFileNameFromUri(file);
-            this.isStd = isStdHeader(fileName);
+            this.isStd = isStdHeader(content.uri);
             let matches;
             //for each include
             while ((matches = includeRegex.exec(contentString)) !== null)
@@ -235,7 +232,7 @@ class IncludeSizeProvider implements vscode.CodeLensProvider
             let codeLenses: vscode.CodeLens[] = [];
             let matches;
 
-            const text = document.getText();
+            const text = replaceCommentWithSpace(document);
             /*find all include */
             while ((matches = this.includeRegex.exec(text)) !== null)
             {
