@@ -1,17 +1,13 @@
-import { config } from 'node:process';
 import * as vscode from 'vscode';
 import * as commands from "./commands";
 import { SizeUnit, toSizeUnit, getSizeUnitEnum } from './sizeUnit';
 import { DigitSeperator, addSeperator, getDigitSeperator} from "./seperator"
 import { StringifyingMap } from "./StringifyMap";
-import { isStdHeader } from "./stdHeaders"
-import { resolve } from 'node:path';
-
 
 
 function getCurrentUri()
 {
-    return vscode.window.activeTextEditor?.document.uri;
+    return vscode.window.activeTextEditor?.document.uri!;
 }
 
 function getCurrentDocument()
@@ -70,15 +66,55 @@ function getPositionFromRegexMatch(document: vscode.TextDocument, match: RegExpE
     return new vscode.Position(line.lineNumber, indexOf);
 }
 
+class IncludeInfo
+{
+    position: vscode.Position;
+    isQuoed: boolean;
+    constructor(position: vscode.Position, isQuoted: boolean)
+    {
+        this.position = position;
+        this.isQuoed = isQuoted;
+    }
+}
+
 class FileInfo
 {
     lines: number;
     bytes: number;
-    includedFileNum: number = 0;
-    constructor(lines: number, bytes: number)
+    mtime: number;
+    includedFiles: Map<string, IncludeInfo> = new Map();
+
+    constructor(lines: number, bytes: number, mtime: number)
     {
         this.lines = lines;
         this.bytes = bytes;
+        this.mtime = mtime;
+    }
+
+    addIncludedFile(fileName: string, info: IncludeInfo)
+    {
+        this.includedFiles.set(fileName, info);
+    }
+
+
+
+    getIncludedFilesNum()
+    {
+        return this.includedFiles.size;
+    }
+
+    getIncludedFileList()
+    {
+        let list: string[] = [];
+        for (const iterator of this.includedFiles) 
+        {
+            if (iterator[1].isQuoed)
+                list.push(`"${iterator[0]}"`);
+            else
+                list.push(`<${iterator[0]}>`)
+        }
+        list.push("Go To Header");
+        return list;
     }
 }
 
@@ -110,25 +146,20 @@ function getFileNameFromUri(uri: vscode.Uri): string
     return path.substring(path.lastIndexOf("/") + 1);
 }
 
+let config = new Configuration();
+
 class IncludeDirective
 {
     position: vscode.Position;
-    isStd: boolean = false;
+    currentUri: vscode.Uri | undefined = undefined;
     
-    static stdIncludedFileNameList: Map<string, Map<string, vscode.Position>> = new Map();  //cache std for faster look-up, <stdHeaderName> <-> (includedHeader <-> Position)
-    includedFileNameList: Map<string, vscode.Position> = new Map();     //don't cache non-std headers, <headerName> <-> Position
-    
-    static includedFiles: UriMap = new UriMap();
-    static config: Configuration = new Configuration();
-
-
-    /*disable recursion for now*/
-    //static recursion = false;
+    static cache: UriMap = new UriMap();
+    static tempFileNameToUriMap: Map<string, vscode.Uri> = new Map();
 
     constructor(position: vscode.Position)
     {
         this.position = position;
-        IncludeDirective.config = new Configuration();
+        config = new Configuration();
     }
 
     /**
@@ -137,43 +168,36 @@ class IncludeDirective
      */
     private async findAllInclude(file: vscode.Uri): Promise<FileInfo | undefined>
     {
-        if (IncludeDirective.includedFiles.has(file))
-            return IncludeDirective.includedFiles.get(file)!;
+        this.currentUri = file;
+        /*Check if the file is modified */
+        const currentFileMtime = (await vscode.workspace.fs.stat(file)).mtime;
+        if (IncludeDirective.cache.has(file))
+        {
+            const cachedFileInfo = IncludeDirective.cache.get(file);
+            if (currentFileMtime === cachedFileInfo.mtime)
+                return cachedFileInfo;
+        }
 
         /*Use regex to find all the includes */
-        const includeRegex = /#include\s*[<"]\s*(.*)\s*[>"]/g;
+        const includeRegex = /#include\s*([<"])\s*(.*)\s*[>"]/g;
         return await vscode.workspace.openTextDocument(file).then(async content =>
         {
-            let currentFileInfo = new FileInfo(0, 0);
-            //const contentString = removeComment(content);
+            let currentFileInfo = new FileInfo(0, 0, currentFileMtime);
             const contentString = replaceCommentWithSpace(content);
-            const fileName = getFileNameFromUri(file);
-            this.isStd = isStdHeader(content.uri);
             let matches;
             //for each include
             while ((matches = includeRegex.exec(contentString)) !== null)
             {
-                ++currentFileInfo.includedFileNum;
                 /*push included file into the list */
-                if (this.isStd)
-                {
-                    let oldList = IncludeDirective.stdIncludedFileNameList.get(fileName);
-                    if (oldList === undefined)
-                    {
-                        IncludeDirective.stdIncludedFileNameList.set(fileName, new Map());
-                        oldList = IncludeDirective.stdIncludedFileNameList.get(fileName)!;
-                    }
-                    oldList.set(matches[1], getPositionFromRegexMatch(content, matches, 1));
-                }
-                else
-                    this.includedFileNameList.set(matches[1], getPositionFromRegexMatch(content, matches, 1));
+                const isQuoed = (matches[1] === "\"");
+                const pos = getPositionFromRegexMatch(content, matches, 2);
+                currentFileInfo.includedFiles.set(matches[2], new IncludeInfo(pos, isQuoed));
             }
 
             currentFileInfo.bytes += contentString.length;
             currentFileInfo.lines += content.lineCount;
             
-            if (this.isStd)
-                IncludeDirective.includedFiles.set(file, currentFileInfo);
+            IncludeDirective.cache.set(file, currentFileInfo);
             return currentFileInfo;
         });
     }
@@ -186,11 +210,18 @@ class IncludeDirective
         {
             return commands.definitionProvider(currentUri, this.position).then(async definition =>
             {
-                return this.findAllInclude(getFileUri(definition)).then(
+                let uri = getFileUri(definition);
+                const includeLineText = vscode.window.activeTextEditor?.document.lineAt(this.position.line)!.text!;
+                const fileName = includeLineText.match(/#include\s*[<"]\s*(.*)\s*[>"]/)![1];
+                if (!includeLineText.includes(getFileNameFromUri(getFileUri(definition)))) //spurious definition
+                    uri = IncludeDirective.tempFileNameToUriMap.get(fileName)!;
+                else
+                    IncludeDirective.tempFileNameToUriMap.set(fileName, uri);
+                return this.findAllInclude(uri).then(
                     info =>
                     {
                         if (info !== undefined)
-                            return `Size: ${toSizeUnit(info.bytes, IncludeDirective.config.sizeUnit, IncludeDirective.config.decimalDigits)} | Lines: ${addSeperator(info.lines, IncludeDirective.config.seperator)} | Included Files: ${info.includedFileNum}`;
+                            return `Size: ${toSizeUnit(info.bytes, config.sizeUnit, config.decimalDigits)} | Lines: ${addSeperator(info.lines, config.seperator)} | Included Files: ${info.getIncludedFilesNum()}`;
                         else
                             return `No info`;
                     }
@@ -202,27 +233,19 @@ class IncludeDirective
     }
 
 
-    async getUri()
+    getIncludedFileList()
     {
-        return getFileUri(await commands.definitionProvider(getCurrentUri()!, this.position));
-    }
-
-    async getIncludedFileList()
-    {
-        const uri = await this.getUri();
-        if(this.includedFileNameList.size === 0)
-            return IncludeDirective.stdIncludedFileNameList.get(getFileNameFromUri(uri));
-        else
-            return this.includedFileNameList;
+        return IncludeDirective.cache.get(this.currentUri!);
     }
 }
 
 
-
+/**
+ * Provide CodeLens info
+ */
 class IncludeSizeProvider implements vscode.CodeLensProvider
 {
     private includeRegex = /(#include\s*[<"]\s*).*\s*[>"]/g;
-
     onDidChangeCodeLenses?: vscode.Event<void> | undefined;
 
     provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.ProviderResult<vscode.CodeLens[]>
@@ -233,7 +256,7 @@ class IncludeSizeProvider implements vscode.CodeLensProvider
             let matches;
 
             const text = replaceCommentWithSpace(document);
-            /*find all include */
+            /*find all include in current document */
             while ((matches = this.includeRegex.exec(text)) !== null)
             {
                 const line = document.lineAt(document.positionAt(matches.index).line);
@@ -245,23 +268,29 @@ class IncludeSizeProvider implements vscode.CodeLensProvider
                     codeLenses.push(new vscode.CodeLens(range));
                 }
             }
-            /*debug */
-            //console.log(`Found ${codeLenses.length} include!`);
             return codeLenses;
         }
         return [];
     }
+
+    /**
+     * CodeLens is a command that shown along with source texxt, like the number of references, a way to run tests ... etc
+     * The available info of a CodeLen object is:
+     * class CodeLens
+     * {
+     *      range: vscode.Range;
+     * }
+     *
+     */
     resolveCodeLens(codeLens: vscode.CodeLens, token: vscode.CancellationToken)
     {
         const includeDirective = new IncludeDirective(codeLens.range.start);
-        /*debug */
-        //console.log("In resolveCodeLens()");
         return includeDirective.toString().then(async str =>
         {
             return new vscode.CodeLens(codeLens.range, {
                 title: str,
                 command: "include-info.goToHeader",
-                arguments: [/*await includeDirective.getUri()*/ includeDirective]
+                arguments: [includeDirective]
             });
         });
     }
@@ -270,40 +299,31 @@ class IncludeSizeProvider implements vscode.CodeLensProvider
 
 export function activate(context: vscode.ExtensionContext) 
 {
-
-    /*debug*/
-    console.log('Congratulations, your extension "include-info" is now active!');
-
     if (vscode.workspace.getConfiguration("Include Info").get<boolean>("Auto Show Include Info", false))
         vscode.languages.registerCodeLensProvider("*", new IncludeSizeProvider);
 
     let disposable = vscode.commands.registerCommand('include-info.showInfo', () => 
     {
-        /*debug*/
         vscode.languages.registerCodeLensProvider("*", new IncludeSizeProvider);
     });
 
     vscode.commands.registerCommand("include-info.goToHeader", async (includeDirective: IncludeDirective) =>
     {
-        let includeMap = (await includeDirective.getIncludedFileList());
-        if (!includeMap)
-            includeMap = new Map();
-        let fileList = Array.from(includeMap.keys());
-        fileList = fileList.map(str => `<${str}>`);
-        vscode.window.showQuickPick(fileList.concat(["Go To Header"])).then(async selection =>
+        const info = includeDirective.getIncludedFileList();
+        vscode.window.showQuickPick(info.getIncludedFileList()).then(async selection =>
         {
             if (selection)
             {
                 if (selection === "Go To Header")
-                    vscode.window.showTextDocument(await includeDirective.getUri()!);
+                    vscode.window.showTextDocument(includeDirective.currentUri!);
                 else
                 {
                     selection = selection?.substr(1, selection.length - 2);
-                    vscode.workspace.openTextDocument(await includeDirective.getUri()).then(doc =>
+                    vscode.workspace.openTextDocument(includeDirective.currentUri!).then(doc =>
                     {
                         vscode.window.showTextDocument(doc).then(async () =>
                         {
-                            const matchedFileUri = getFileUri(await commands.definitionProvider(doc.uri, includeMap?.get(selection!)!));
+                            const matchedFileUri = getFileUri(await commands.definitionProvider(doc.uri, info.includedFiles.get(selection!)?.position!));
                             vscode.window.showTextDocument(matchedFileUri);
                         })
                     })

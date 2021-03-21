@@ -35,6 +35,8 @@ This extension contributes the following settings:
 - Help remove unnecessary include (might need a language server)
 
 ## Release Notes
+- 1.2.0
+Include file lists can now distinguish `<file>` and `"file"`
 - 1.1.2
 More optimizations
 - 1.1.1
