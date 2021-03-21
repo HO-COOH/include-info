@@ -16,6 +16,7 @@ export function toSizeUnit(size: number, unit: SizeUnit, decimalDigits: number =
         const sizeKB = size / SizeUnit.KB;
         if (sizeKB > 1)
             return `${sizeKB.toFixed(decimalDigits)} KB`;
+        unit = SizeUnit.B;
     }
     if (unit === SizeUnit.B)
         return `${size.toString()} Bytes`;
