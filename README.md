@@ -35,6 +35,8 @@ This extension contributes the following settings:
 - Help remove unnecessary include (might need a language server)
 
 ## Release Notes
+- 1.2.2 
+Use `onDidChangeConfiguration` instead of checking it every time
 - 1.2.1
 Fix Auto size bug.
 - 1.2.0

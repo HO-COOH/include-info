@@ -159,7 +159,6 @@ class IncludeDirective
     constructor(position: vscode.Position)
     {
         this.position = position;
-        config = new Configuration();
     }
 
     /**
@@ -302,6 +301,12 @@ export function activate(context: vscode.ExtensionContext)
     if (vscode.workspace.getConfiguration("Include Info").get<boolean>("Auto Show Include Info", false))
         vscode.languages.registerCodeLensProvider("*", new IncludeSizeProvider);
 
+    vscode.workspace.onDidChangeConfiguration((event) =>
+    {
+        if (event.affectsConfiguration("Include Info"))
+            config = new Configuration();
+    })
+    
     let disposable = vscode.commands.registerCommand('include-info.showInfo', () => 
     {
         vscode.languages.registerCodeLensProvider("*", new IncludeSizeProvider);
