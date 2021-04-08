@@ -1,4 +1,11 @@
 ![](logo.png)
+
+
+![](https://vsmarketplacebadge.apphb.com/version/HO-COOH.include-info.svg)
+![](https://vsmarketplacebadge.apphb.com/installs-short/HO-COOH.include-info.svg)
+![](https://vsmarketplacebadge.apphb.com/rating-short/HO-COOH.include-info.svg)
+
+
 # include-info
 Show info about your `<included>` files!
 
